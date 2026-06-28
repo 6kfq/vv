@@ -1,4 +1,4 @@
--- Força os valores na tela
+-- Força os valores na tela - Coins: 8115 | Moonstone: 25
 
 local player = game:GetService("Players").LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -7,11 +7,11 @@ local playerGui = player:WaitForChild("PlayerGui")
 for _, obj in pairs(playerGui:GetDescendants()) do
     if obj:IsA("TextLabel") then
         if obj.Name == "MysticCoinAmount" then
-            obj.Text = "2475"
-            print("Coins alterado para 2475")
+            obj.Text = "8115"
+            print("Coins alterado para 8115")
         elseif obj.Name == "MoonstoneAmount" then
-            obj.Text = "100"
-            print("Moonstone alterado para 100")
+            obj.Text = "25"
+            print("Moonstone alterado para 25")
         end
     end
 end
@@ -22,9 +22,9 @@ for _, screenGui in pairs(playerGui:GetChildren()) do
         for _, obj in pairs(screenGui:GetDescendants()) do
             if obj:IsA("TextLabel") then
                 if obj.Name == "MysticCoinAmount" then
-                    obj.Text = "2475"
+                    obj.Text = "8115"
                 elseif obj.Name == "MoonstoneAmount" then
-                    obj.Text = "100"
+                    obj.Text = "25"
                 end
             end
         end
