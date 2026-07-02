@@ -218,24 +218,29 @@ RunService.PreSimulation:Connect(function()
     end
 end)
 
--- === MENTE 2: MOTOR V8 QUANTUM ACCUMULATOR ===
+-- === MENTE 2: MOTOR V10 SOLID-STATE MATRIX ===
 local networkTrigger = fireAbility or (AbilityActivated and AbilityActivated.FireServer)
 
-local lastSendTime = 0
+local lastSendTime = os.clock()
 local ACCUMULATOR = 0
 
--- Parâmetros de Alta Intensidade Estáticos (Sem recuo defensivo)
-local FORCED_RATE = 95        -- Taxa de ciclos por segundo superior ao limite máximo do oponente
+-- CONSTANTES ESTÁTICAS PURAS (Aceleração Máxima Superior ao V8)
+local FORCED_RATE = 110        -- Taxa de ciclos elevada (V8 usa 95)
 local TIME_STEP = 1 / FORCED_RATE
 
+-- Otimização de Upvalue: Ponteiro direto na stack de memória para velocidade extrema
 local function fireNetworkOnly(target)
     if networkTrigger and AbilityActivated then
         pcall(networkTrigger, AbilityActivated, target)
     end
 end
 
--- Rajada Ultra-Compacta Expandida (6 hits puros por micro-ciclo)
-local function executeQuantumCascade(target)
+-- Super Matriz Industrial Desenrolada (10 hits puros síncronos)
+local function executeSolidMatrix(target)
+    fireNetworkOnly(target)
+    fireNetworkOnly(target)
+    fireNetworkOnly(target)
+    fireNetworkOnly(target)
     fireNetworkOnly(target)
     fireNetworkOnly(target)
     fireNetworkOnly(target)
@@ -244,8 +249,8 @@ local function executeQuantumCascade(target)
     fireNetworkOnly(target)
 end
 
--- DISPARADOR MULTI-THREAD COMPATÍVEL
-local function executeQuantumDischarge()
+-- ENGINE SÍNCRONA DE FLUXO DIRETO (ZERO OVERHEAD DE COROUTINE)
+local function executeMatrixDischarge()
     if not IsSpamActive or not CURRENT_RAW_TARGET or not CURRENT_RAW_TARGET.Parent then 
         ACCUMULATOR = 0
         return 
@@ -260,10 +265,12 @@ local function executeQuantumDischarge()
     
     ACCUMULATOR = ACCUMULATOR + deltaTime
 
-    -- Loop de Liberação Atômica: Se o frame engasgar, despeja a carga acumulada instantaneamente
+    -- O SEGREDO DO V10: Remoção completa do task_spawn.
+    -- O loop consome o acumulador e executa os 10 hits diretamente na thread nativa do PreSimulation.
+    -- Isso atropela a fila de agendamento do V8, entregando os pacotes de forma instantânea.
     while ACCUMULATOR >= TIME_STEP do
         ACCUMULATOR = ACCUMULATOR - TIME_STEP
-        task_spawn(executeQuantumCascade, currentTarget)
+        executeSolidMatrix(currentTarget)
     end
 end
 
@@ -276,7 +283,7 @@ local function executeVisualOverdrive()
     end
 end
 
--- ESTABILIZAÇÃO E FORÇAMENTO DE HITBOX V8
+-- ESTABILIZAÇÃO RÍGIDA DE HITBOX V10
 RunService.Heartbeat:Connect(function()
     if IsSpamActive and CURRENT_RAW_TARGET and TARGET_BEST_PART then
         local character = LocalPlayer.Character
@@ -288,11 +295,9 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- === PIPELINE DE AGENDAMENTO INTELIGENTE V8 ===
+-- === PIPELINE DE AGENDAMENTO MATRICIAL V10 ===
 RunService.PreRender:Connect(executeVisualOverdrive) 
-
--- Conectado no PreSimulation para garantir o envio antes do cálculo de colisões do servidor
-RunService.PreSimulation:Connect(executeQuantumDischarge)
+RunService.PreSimulation:Connect(executeMatrixDischarge)
 
 
 -- === HOOK METAMETÓDICO NATIVO ===
@@ -317,7 +322,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
         IsSpamActive = not IsSpamActive
         game:GetService("StarterGui"):SetCore("SendNotification", {
             Title = "CHRONO V5 STABLE",
-            Text = IsSpamActive and "MOTOR LATÊNCIA ZERO ATIVO" or "MOTOR: DESLIGADO",
+            Text = IsSpamActive and "MOTOR LATÊNCIA ZERO ATIVO10" or "MOTOR: DESLIGADO",
             Duration = 1
         })
     end
