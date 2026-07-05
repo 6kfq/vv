@@ -36,16 +36,17 @@ local SCAN_RANGE_SQ = SCAN_RANGE * SCAN_RANGE
 local RANGE_LIMIT = 65.0
 local RANGE_LIMIT_SQ = RANGE_LIMIT * RANGE_LIMIT
 
--- === CAPTURA DE ESCOPO DO JOGO (EXTRAÇÃO DE ARQUIVOS INTERNOS) ===
+-- === CAPTURA DE ESCOPO DO JOGO E BYPASSES ANCORADOS ===
 local GameActiveAbilityInstance = nil
 local GameEquipFunction = nil
 local GameTargetSystemInstance = nil
 
--- CAPTURA DE ESCOPO COM ZERO FREEZE (CORREÇÃO PARA ANULAR O 0 FPS NA INJEÇÃO)
 task_spawn(function()
     task.wait(2)
     local HitscanFound = false
     local CarryBypassFound = false
+    local ClientDebounceFound = false
+    local AbilityClientFound = false
     
     local gc = getgc(true)
     local gcLength = #gc
@@ -57,6 +58,7 @@ task_spawn(function()
         
         local item = gc[i]
         if type(item) == "table" then
+            -- 1. Interceptação do Motor de Equipamento Nativo
             if not GameActiveAbilityInstance and rawget(item, "activeAbility") and type(item.activeAbility) == "table" then
                 local targetAbility = item.activeAbility
                 if targetAbility.equip and type(targetAbility.equip) == "function" then
@@ -64,10 +66,12 @@ task_spawn(function()
                     GameEquipFunction = targetAbility.equip
                 end
             end
+            
             if not GameTargetSystemInstance and (rawget(item, "getTarget") or rawget(item, "GetClosestTarget")) then
                 GameTargetSystemInstance = item
             end
             
+            -- 2. Bypass de Interrupção de Estado ("Carry")
             if not CarryBypassFound and rawget(item, "set") and rawget(item, "isAlive") and rawget(item, "kill") then
                 local oldSet = item.set
                 item.set = function(name, timeout)
@@ -77,6 +81,37 @@ task_spawn(function()
                 CarryBypassFound = true
             end
 
+            -- 3. Sabotagem de Fila do Janitor via Módulo Debounce (Zera o acúmulo de CPU)
+            if not ClientDebounceFound and rawget(item, "getTimeLeft") then
+                local oldGetTimeLeft = item.getTimeLeft
+                item.getTimeLeft = function(abilityName)
+                    if IsSpamActive then 
+                        return 0 
+                    end
+                    return oldGetTimeLeft(abilityName)
+                end
+                ClientDebounceFound = true
+            end
+
+            -- 4. Neutralização de Comandos de Desarmamento/Stun (Imunidade de Estado)
+            if not AbilityClientFound and rawget(item, "giveAbility") and rawget(item, "disableAbility") then
+                local oldDisableAbility = item.disableAbility
+                item.disableAbility = function(abilityName, ...)
+                    if IsSpamActive then return end
+                    return oldDisableAbility(abilityName, ...)
+                end
+
+                local oldSetState = item.setState
+                item.setState = function(stateName, stateValue, ...)
+                    if IsSpamActive and (stateName == "Stunned" or stateName == "Disabled" or stateName == "Ragdoll") then
+                        return oldSetState(stateName, false, ...)
+                    end
+                    return oldSetState(stateName, stateValue, ...)
+                end
+                AbilityClientFound = true
+            end
+
+            -- 5. Interceptador de Hitscan do Servidor
             if not HitscanFound and rawget(item, "Hitscan") and rawget(item, "AreaCheck") and not rawget(item, "CreateTargetProximityPrompt") then
                 local oldHitscan = item.Hitscan
                 item.Hitscan = function(p6, p7)
@@ -116,7 +151,7 @@ task_spawn(function()
     gc = nil
 end)
 
--- === SISTEMA DE CACHE AMIGÁVEL ===
+-- === SISTEMA DE CACHE DE AMIGOS ===
 local FriendCache = {}
 local function checkAndCachePlayer(player)
     if not player or player == LocalPlayer then return end
@@ -131,7 +166,7 @@ local allPlayers = GetPlayers(Players)
 for i = 1, #allPlayers do checkAndCachePlayer(allPlayers[i]) end
 Players.PlayerAdded:Connect(checkAndCachePlayer)
 
--- === COMPONENTES DE REDE DE SUBSISTEMA ===
+-- === COMPONENTES DE REDE DO SUBSISTEMA ===
 local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
 local ToServer = Remotes and Remotes:FindFirstChild("GameServices") and Remotes.GameServices:FindFirstChild("ToServer")
 local AbilityActivated = ToServer and ToServer:FindFirstChild("AbilityActivated____") or ReplicatedStorage:FindFirstChild("AbilityActivated____", true)
@@ -218,87 +253,98 @@ RunService.PreSimulation:Connect(function()
     end
 end)
 
--- === MENTE 2: MOTOR V10 SOLID-STATE MATRIX ===
-local networkTrigger = fireAbility or (AbilityActivated and AbilityActivated.FireServer)
-
+-- === MENTE 2: MOTOR V15 QUANTUM RECALIBRADO (1.500 P/S) ===
 local lastSendTime = os.clock()
 local ACCUMULATOR = 0
 
--- CONSTANTES ESTÁTICAS PURAS (Aceleração Máxima Superior ao V8)
-local FORCED_RATE = 110        -- Taxa de ciclos elevada (V8 usa 95)
+-- Escalonamento Preciso (150Hz × 10 Inlines = 1.500 pacotes por segundo)
+local FORCED_RATE = 150        
 local TIME_STEP = 1 / FORCED_RATE
 
--- Otimização de Upvalue: Ponteiro direto na stack de memória para velocidade extrema
-local function fireNetworkOnly(target)
-    if networkTrigger and AbilityActivated then
-        pcall(networkTrigger, AbilityActivated, target)
-    end
-end
-
--- Super Matriz Industrial Desenrolada (10 hits puros síncronos)
-local function executeSolidMatrix(target)
-    fireNetworkOnly(target)
-    fireNetworkOnly(target)
-    fireNetworkOnly(target)
-    fireNetworkOnly(target)
-    fireNetworkOnly(target)
-    fireNetworkOnly(target)
-    fireNetworkOnly(target)
-    fireNetworkOnly(target)
-    fireNetworkOnly(target)
-    fireNetworkOnly(target)
-end
-
--- ENGINE SÍNCRONA DE FLUXO DIRETO (ZERO OVERHEAD DE COROUTINE)
-local function executeMatrixDischarge()
-    if not IsSpamActive or not CURRENT_RAW_TARGET or not CURRENT_RAW_TARGET.Parent then 
+local function executeV15QuantumEngine()
+    if not IsSpamActive then 
         ACCUMULATOR = 0
         return 
     end
-    
-    local currentTarget = CURRENT_RAW_TARGET
+
+    local character = LocalPlayer.Character
+    local localHrp = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+    -- -------------------------------------------------------------
+    -- [ MENTE 3: VIBRAÇÃO ANTI-SLEEP E DIREÇÃO VETORIAL ]
+    -- -------------------------------------------------------------
+    if localHrp and humanoid then
+        -- Pequeno pulso de força para garantir a prioridade da rede (Network Ownership)
+        localHrp.RotVelocity = Vector3.new(0, 0.0001, 0)
+        localHrp.AssemblyAngularVelocity = Vector3.new(0, 0.0001, 0)
+        
+        if humanoid.PlatformStand then
+            humanoid.PlatformStand = false
+        end
+
+        if TARGET_BEST_PART then
+            local direction = (TARGET_BEST_PART.Position - localHrp.Position).Unit
+            localHrp.AssemblyLinearVelocity = localHrp.AssemblyLinearVelocity + (direction * 0.06)
+        end
+    end
+
+    -- -------------------------------------------------------------
+    -- [ MENTE 2: INJEÇÃO MAXIMIZADA E EQUIPAMENTO NATIVO ]
+    -- -------------------------------------------------------------
+    local trigger = fireAbility or (AbilityActivated and AbilityActivated.FireServer)
+    local remote = AbilityActivated
+    local target = CURRENT_RAW_TARGET
+
+    if not trigger or not remote or not target or not target.Parent then return end
+
+    -- Sincronização direta ignorando os atrasos normais do cliente
+    if GameEquipFunction and GameActiveAbilityInstance then
+        pcall(GameEquipFunction, GameActiveAbilityInstance)
+    end
+
     local currentTime = os.clock()
     local deltaTime = currentTime - lastSendTime
     lastSendTime = currentTime
 
     if deltaTime > 0.1 then deltaTime = 0.016 end 
-    
     ACCUMULATOR = ACCUMULATOR + deltaTime
 
-    -- O SEGREDO DO V10: Remoção completa do task_spawn.
-    -- O loop consome o acumulador e executa os 10 hits diretamente na thread nativa do PreSimulation.
-    -- Isso atropela a fila de agendamento do V8, entregando os pacotes de forma instantânea.
+    -- Loop JIT Desdobrado Estático
     while ACCUMULATOR >= TIME_STEP do
         ACCUMULATOR = ACCUMULATOR - TIME_STEP
-        executeSolidMatrix(currentTarget)
+        
+        -- 10 Disparos diretos na Stack C-Side. Sem sub-funções secundárias.
+        pcall(trigger, remote, target)
+        pcall(trigger, remote, target)
+        pcall(trigger, remote, target)
+        pcall(trigger, remote, target)
+        pcall(trigger, remote, target)
+        pcall(trigger, remote, target)
+        pcall(trigger, remote, target)
+        pcall(trigger, remote, target)
+        pcall(trigger, remote, target)
+        pcall(trigger, remote, target)
     end
 end
 
--- CONTROLADOR VISUAL TOTALMENTE ISOLADO
+-- CONTROLADOR VISUAL EXTRA-RÁPIDO
 local function executeVisualOverdrive()
     if IsSpamActive and CURRENT_RAW_TARGET and CURRENT_RAW_TARGET.Parent then
         if GameEquipFunction and GameActiveAbilityInstance then
-            pcall(GameEquipFunction, GameActiveAbilityInstance, CURRENT_RAW_TARGET)
+            pcall(GameEquipFunction, GameActiveAbilityInstance)
         end
     end
 end
 
--- ESTABILIZAÇÃO RÍGIDA DE HITBOX V10
-RunService.Heartbeat:Connect(function()
-    if IsSpamActive and CURRENT_RAW_TARGET and TARGET_BEST_PART then
-        local character = LocalPlayer.Character
-        local localHrp = character and character:FindFirstChild("HumanoidRootPart")
-        if localHrp then
-            local direction = (TARGET_BEST_PART.Position - localHrp.Position).Unit
-            localHrp.AssemblyLinearVelocity = localHrp.AssemblyLinearVelocity + (direction * 0.06)
-        end
-    end
-end)
+-- EXECUÇÃO DE ARRANOUE INSTANTÂNEO
+local function forceInstantTrigger()
+    ACCUMULATOR = TIME_STEP
+end
 
--- === PIPELINE DE AGENDAMENTO MATRICIAL V10 ===
-RunService.PreRender:Connect(executeVisualOverdrive) 
-RunService.PreSimulation:Connect(executeMatrixDischarge)
-
+-- === PIPELINE DE AGENDAMENTO EXCLUSIVO PRE-RENDER ===
+RunService.PreRender:Connect(executeV15QuantumEngine)
+RunService.PreRender:Connect(executeVisualOverdrive)
 
 -- === HOOK METAMETÓDICO NATIVO ===
 local oldNamecall
@@ -320,9 +366,14 @@ UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
     if input.KeyCode == Enum.KeyCode.R then
         IsSpamActive = not IsSpamActive
+        
+        if IsSpamActive then
+            forceInstantTrigger()
+        end
+        
         game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "CHRONO V5 STABLE",
-            Text = IsSpamActive and "MOTOR LATÊNCIA ZERO ATIVO10" or "MOTOR: DESLIGADO",
+            Title = "CHRONO V15 QUANTUM",
+            Text = IsSpamActive and "1500 P/S BYPASS CONTROL STATE ACTIVE" or "MOTOR: DESLIGADO",
             Duration = 1
         })
     end
