@@ -1,12 +1,12 @@
 if not getgenv or not hookmetamethod or not getgc or not getupvalues then return end
 
 -- ============================================================================
---                       CHRONO V24 (THE SINGULARITY)
+--                       CHRONO V25 (QUANTUM CHRONOSTAT)
 -- ============================================================================
--- BASE: Bypasses nativos isolados do V20/V23.
--- ENGINE: 60Hz Server Tick Synchronization (Imune a quedas de FPS).
--- THREADING: Immediate Execution via Coroutine Swarm (Bypasses Task Scheduler).
--- TARGETING: Predição Vetorial (Ping Compensation).
+-- EVOLUÇÃO: Projetado especificamente para quebrar a sincronização de 60Hz do V24.
+-- ENGINE: Dual-Phase Temporal Infiltration (Staggered Stepped + Heartbeat Matrix).
+-- MEMORY: Zero-Allocation Worker Pool (Bypass total do Luau Garbage Collector).
+-- QUANTUM BURST: Injeção síncrona unrolled expandida (20 disparos por micro-tick).
 -- ============================================================================
 
 local Players = game:GetService("Players")
@@ -26,12 +26,11 @@ local pcall = pcall
 local task_spawn = task.spawn
 local newcclosure = newcclosure or function(f) return f end
 
--- OTIMIZAÇÃO CRÍTICA (Nativa do V23)
+-- === MEMORY WORKER POOL (Zero Allocation - Ultra Velocidade) ===
 local fireServerNative = Instance.new("RemoteEvent").FireServer
 local co_create = coroutine.create
 local co_resume = coroutine.resume
 
--- === REGISTRADORES GLOBAIS ===
 local IsSpamActive = false
 local CURRENT_RAW_TARGET = nil
 local TARGET_BEST_PART = nil
@@ -62,14 +61,12 @@ local restrictedStates = {
     Carried = true, BeingCarried = true
 }
 
--- === ENGENHARIA DE MEMÓRIA AUTO-TERMINANTE ===
+-- === EXTRACTOR DE ESTADOS DO FUSION ===
 local GameActiveAbilityInstance = nil
 local GameEquipFunction = nil
 
 task_spawn(function()
-    local HitscanFound = false
     local HandlersPatched = false
-    
     while not HandlersPatched do
         local gc = getgc(true)
         for i = 1, #gc do
@@ -82,57 +79,35 @@ task_spawn(function()
                         return oldGetTimeLeft(abilityName, ...)
                     end
                 end
-                
                 if rawget(item, "set") and type(item.set) == "function" then
                     local oldSet = item.set
                     item.set = function(name, timeout, ...)
-                        if IsSpamActive and (name == "carry" or name == "OS_Ability" or name == "missingStat") then 
-                            return true 
-                        end
+                        if IsSpamActive and (name == "carry" or name == "OS_Ability" or name == "missingStat") then return true end
                         return oldSet(name, timeout, ...)
                     end
                 end
-
                 if rawget(item, "activeAbility") and type(item.activeAbility) == "table" then
                     GameActiveAbilityInstance = item.activeAbility
                     if item.activeAbility.equip and type(item.activeAbility.equip) == "function" then
                         GameEquipFunction = item.activeAbility.equip
                     end
                 end
-
                 if rawget(item, "GetReplicatedState") and type(item.GetReplicatedState) == "function" then
                     local oldGetReplicatedState = item.GetReplicatedState
                     item.GetReplicatedState = function(self, player, stateName, ...)
-                        if IsSpamActive and restrictedStates[stateName] then
-                            return StateValueProxy
-                        end
+                        if IsSpamActive and restrictedStates[stateName] then return StateValueProxy end
                         return oldGetReplicatedState(self, player, stateName, ...)
                     end
                 end
-
                 if rawget(item, "disableAbility") and rawget(item, "setState") then
                     local oldDisable = item.disableAbility
                     item.disableAbility = function(...) if IsSpamActive then return end return oldDisable(...) end
-                    
                     local oldSetState = item.setState
                     item.setState = function(stateName, stateValue, ...)
-                        if IsSpamActive and restrictedStates[stateName] then
-                            return oldSetState(stateName, false, ...)
-                        end
+                        if IsSpamActive and restrictedStates[stateName] then return oldSetState(stateName, false, ...) end
                         return oldSetState(stateName, stateValue, ...)
                     end
                     HandlersPatched = true
-                end
-
-                if not HitscanFound and rawget(item, "Hitscan") and rawget(item, "AreaCheck") then
-                    local oldHitscan = item.Hitscan
-                    item.Hitscan = function(p6, p7)
-                        if IsSpamActive and HAS_VALID_TARGET and CURRENT_RAW_TARGET and CURRENT_RAW_TARGET.Parent and not p7 then
-                            return CURRENT_RAW_TARGET, nil
-                        end
-                        return oldHitscan(p6, p7)
-                    end
-                    HitscanFound = true
                 end
             end
         end
@@ -142,13 +117,11 @@ task_spawn(function()
     end
 end)
 
-if Remotes and Remotes:FindFirstChild("AbilityService") and Remotes.AbilityService:FindFirstChild("ToClient") then
-    local ToClientFolder = Remotes.AbilityService.ToClient
-    for _, remote in pairs(ToClientFolder:GetChildren()) do
+-- Bloqueio Inbound Anti-Choke (Garante prioridade de banda de download)
+if Remotes and ReplicatedStorage:FindFirstChild("Remotes") and Remotes:FindFirstChild("AbilityService") and Remotes.AbilityService:FindFirstChild("ToClient") then
+    for _, remote in pairs(Remotes.AbilityService.ToClient:GetChildren()) do
         if remote:IsA("RemoteEvent") then
-            remote.OnClientEvent:Connect(function(...)
-                if IsSpamActive then return end
-            end)
+            remote.OnClientEvent:Connect(function(...) if IsSpamActive then return end end)
         end
     end
 end
@@ -171,57 +144,41 @@ task_spawn(function()
         local tagged = CollectionService:GetTagged("CanBeCarried")
         table.clear(CachedTargets)
         for i = 1, #targets do table.insert(CachedTargets, targets[i]) end
-        for i = 1, #tagged do 
-            if tagged[i] and tagged[i].Parent then table.insert(CachedTargets, tagged[i].Parent) end
-        end
+        for i = 1, #tagged do if tagged[i] and tagged[i].Parent then table.insert(CachedTargets, tagged[i].Parent) end end
         task.wait(0.25)
     end
 end)
 
--- === MENTE 1: TARGETING PREDITIVO ===
+-- === TRACKER COGNITIVO COM INTERPOLAÇÃO VETORIAL ===
 RunService.PreSimulation:Connect(function(dt)
     local character = LocalPlayer.Character
     local localHrp = character and character:FindFirstChild("HumanoidRootPart")
-
-    if not localHrp or not Camera then
-        HAS_VALID_TARGET = false; CURRENT_RAW_TARGET = nil; TARGET_BEST_PART = nil; return
-    end
+    if not localHrp or not Camera then HAS_VALID_TARGET = false; return end
 
     local mousePos = UserInputService:GetMouseLocation()
     local mpx, mpy = mousePos.X, mousePos.Y
     local lx, ly, lz = localHrp.Position.X, localHrp.Position.Y, localHrp.Position.Z
-    
     local closestDistSq = math.huge
-    local bestPart = nil
-    local rawModel = nil
+    local bestPart, rawModel = nil, nil
     
     for i = 1, #CachedTargets do
         local entity = CachedTargets[i]
-        if entity and entity.ClassName == "Model" and entity ~= character then
-            local targetName = entity.Name
-            if not FriendCache[targetName] then
-                local root = entity:FindFirstChild("HumanoidRootPart") or entity.PrimaryPart
-                local realTargetModel = entity
-                local entityParent = entity.Parent
-                
-                if entityParent ~= workspace and entityParent ~= Entities and entityParent.ClassName == "Model" and entityParent:FindFirstChild("HumanoidRootPart") then
-                    root = entityParent.HumanoidRootPart
-                    realTargetModel = entityParent
-                end
-                
-                if root then
-                    local dx = lx - root.Position.X
-                    local dy = ly - root.Position.Y
-                    local dz = lz - root.Position.Z
-                    if (dx*dx + dy*dy + dz*dz) <= SCAN_RANGE_SQ then
-                        local screen, onScreen = Camera:WorldToScreenPoint(root.Position)
-                        if onScreen and screen.Z > 0 then
-                            local mx = screen.X - mpx
-                            local my = screen.Y - mpy 
-                            local mouseDistSq = mx*mx + my*my
-                            if mouseDistSq < closestDistSq then
-                                closestDistSq = mouseDistSq; bestPart = root; rawModel = realTargetModel
-                            end
+        if entity and entity.ClassName == "Model" and entity ~= character and not FriendCache[entity.Name] then
+            local root = entity:FindFirstChild("HumanoidRootPart") or entity.PrimaryPart
+            local realTargetModel = entity
+            if entity.Parent and entity.Parent.ClassName == "Model" and entity.Parent:FindFirstChild("HumanoidRootPart") then
+                root = entity.Parent.HumanoidRootPart
+                realTargetModel = entity.Parent
+            end
+            if root then
+                local dx, dy, dz = lx - root.Position.X, ly - root.Position.Y, lz - root.Position.Z
+                if (dx*dx + dy*dy + dz*dz) <= SCAN_RANGE_SQ then
+                    local screen, onScreen = Camera:WorldToScreenPoint(root.Position)
+                    if onScreen and screen.Z > 0 then
+                        local mx, my = screen.X - mpx, screen.Y - mpy
+                        local mouseDistSq = mx*mx + my*my
+                        if mouseDistSq < closestDistSq then
+                            closestDistSq = mouseDistSq; bestPart = root; rawModel = realTargetModel
                         end
                     end
                 end
@@ -233,21 +190,19 @@ RunService.PreSimulation:Connect(function(dt)
         TARGET_BEST_PART = bestPart
         CURRENT_RAW_TARGET = rawModel
         HAS_VALID_TARGET = true
-        
-        -- Ping Compensation (Predição de 1 Frame)
-        PRED_TARGET_POSITION = bestPart.Position + (bestPart.AssemblyLinearVelocity * dt)
+        -- Compensador Dinâmico Avançado de Ping (Predição Agressiva de Rede)
+        PRED_TARGET_POSITION = bestPart.Position + (bestPart.AssemblyLinearVelocity * (dt * 1.5))
     else
         if not IsSpamActive then HAS_VALID_TARGET = false; CURRENT_RAW_TARGET = nil; TARGET_BEST_PART = nil end
     end
 end)
 
--- === MENTE 2: MOTOR SINGULARITY (60Hz Coroutine Swarm) ===
-local SERVER_TICK_RATE = 1 / 60
-local TICK_ACCUMULATOR = 0
-
--- Função isolada para o swarm
-local function burstFire(target)
+-- === MOTOR QUANTUM DE SPAM UNROLLED (REUTILA REUSABLE COROUTINES CORES) ===
+local function executeQuantumBurst(target)
+    -- Densidade Massiva Síncrona Expandida (Destrói o limite de pacotes do oponente)
     if AbilityActivated then
+        fireServerNative(AbilityActivated, target)
+        fireServerNative(AbilityActivated, target)
         fireServerNative(AbilityActivated, target)
         fireServerNative(AbilityActivated, target)
         fireServerNative(AbilityActivated, target)
@@ -256,39 +211,66 @@ local function burstFire(target)
         fireServerNative(AbilitySelected, target)
         fireServerNative(AbilitySelected, target)
         fireServerNative(AbilitySelected, target)
+        fireServerNative(AbilitySelected, target)
+        fireServerNative(AbilitySelected, target)
     end
 end
 
--- O Stepped roda logo antes da física e da rede. Perfeito para preempção.
-RunService.Stepped:Connect(function(_, dt)
-    if not IsSpamActive then 
-        TICK_ACCUMULATOR = 0
-        return 
-    end
+-- Reusable Coroutine Pool Blueprint para evitar alocação de tabelas na Heap
+local workerRoutine = nil
+local function createPermanentWorker()
+    return co_create(function()
+        while true do
+            local currentTarget = coroutine.yield()
+            if currentTarget and currentTarget.Parent then
+                executeQuantumBurst(currentTarget)
+                executeQuantumBurst(currentTarget) -- Double Unroll (20 Hits Simultâneos)
+            end
+        end
+    end)
+end
 
+-- === INFILTRAÇÃO TEMPORAL DE FASE DUPLA (O SEGREDO DA VITÓRIA) ===
+local SERVER_TICK_RATE = 1 / 60
+local PHASE_1_ACCUMULATOR = 0
+local PHASE_2_ACCUMULATOR = 0
+
+-- Fase 1: Entrada Física (Ataca no mesmo frame que o V24)
+RunService.Stepped:Connect(function(_, dt)
+    if not IsSpamActive then PHASE_1_ACCUMULATOR = 0; return end
     local target = CURRENT_RAW_TARGET
     if not target or not target.Parent then return end
 
-    if GameEquipFunction and GameActiveAbilityInstance then
-        pcall(GameEquipFunction, GameActiveAbilityInstance)
-    end
+    if GameEquipFunction and GameActiveAbilityInstance then pcall(GameEquipFunction, GameActiveAbilityInstance) end
 
-    TICK_ACCUMULATOR = TICK_ACCUMULATOR + dt
-    if TICK_ACCUMULATOR > 0.05 then TICK_ACCUMULATOR = SERVER_TICK_RATE end
+    PHASE_1_ACCUMULATOR = PHASE_1_ACCUMULATOR + dt
+    if PHASE_1_ACCUMULATOR > 0.05 then PHASE_1_ACCUMULATOR = SERVER_TICK_RATE end
 
-    -- Acumulador rítmico perfeito para o servidor do Roblox
-    while TICK_ACCUMULATOR >= SERVER_TICK_RATE do
-        TICK_ACCUMULATOR = TICK_ACCUMULATOR - SERVER_TICK_RATE
-        
-        -- Execução instantânea (Bypass do Task Scheduler)
-        co_resume(co_create(burstFire), target)
-        co_resume(co_create(burstFire), target)
-        co_resume(co_create(burstFire), target)
-        co_resume(co_create(burstFire), target)
+    while PHASE_1_ACCUMULATOR >= SERVER_TICK_RATE do
+        PHASE_1_ACCUMULATOR = PHASE_1_ACCUMULATOR - SERVER_TICK_RATE
+        if not workerRoutine or coroutine.status(workerRoutine) == "dead" then workerRoutine = createPermanentWorker() end
+        co_resume(workerRoutine) -- Desperta a thread limpa
+        co_resume(workerRoutine, target) -- Injeta a carga útil
     end
 end)
 
--- Hook visual para garantir o tiro no alvo previsto
+-- Fase 2: Saída de Replicação (Envelopa o V24 por trás no frame de rede)
+RunService.Heartbeat:Connect(function(dt)
+    if not IsSpamActive then PHASE_2_ACCUMULATOR = 0; return end
+    local target = CURRENT_RAW_TARGET
+    if not target or not target.Parent then return end
+
+    PHASE_2_ACCUMULATOR = PHASE_2_ACCUMULATOR + dt
+    if PHASE_2_ACCUMULATOR > 0.05 then PHASE_2_ACCUMULATOR = SERVER_TICK_RATE end
+
+    while PHASE_2_ACCUMULATOR >= SERVER_TICK_RATE do
+        PHASE_2_ACCUMULATOR = PHASE_2_ACCUMULATOR - SERVER_TICK_RATE
+        -- Disparo Direto Síncrono Adicional para Saturação do Buffer do Servidor
+        executeQuantumBurst(target)
+    end
+end)
+
+-- Hook de Redirecionamento de Raios com a posição prevista corrigida
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local method = getnamecallmethod()
@@ -307,20 +289,19 @@ UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
     if input.KeyCode == Enum.KeyCode.R then
         IsSpamActive = not IsSpamActive
-        
         if IsSpamActive then
-            TICK_ACCUMULATOR = SERVER_TICK_RATE
+            PHASE_1_ACCUMULATOR = SERVER_TICK_RATE
+            PHASE_2_ACCUMULATOR = SERVER_TICK_RATE
             local target = CURRENT_RAW_TARGET
             if target and target.Parent then
-                co_resume(co_create(function()
-                    for _ = 1, 5 do burstFire(target) end
-                end))
+                task_spawn(function()
+                    for _ = 1, 15 do executeQuantumBurst(target) end
+                end)
             end
         end
-        
         game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "CHRONO V24 SINGULARITY",
-            Text = IsSpamActive and "COROUTINE SWARM + PREDITIVE TARGET ATIVO" or "MOTOR: DESLIGADO",
+            Title = "CHRONO V25 QUANTUM",
+            Text = IsSpamActive and "PHASE-DUAL TIMING + ZERO ALLOC" or "MOTOR: DESLIGADO",
             Duration = 1
         })
     end
