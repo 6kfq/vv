@@ -1,12 +1,12 @@
 if not getgenv or not hookmetamethod or not getgc or not getupvalues then return end
 
 -- ============================================================================
---                       CHRONO V23 (TITAN OVERCLOCK)
+--                       CHRONO V24 (THE SINGULARITY)
 -- ============================================================================
--- BASE: Estrutura v20titan.lua comprovada em combate.
--- UPGRADE 1: Method Caching nativo (Zero __index overhead).
--- UPGRADE 2: Remoção de pcall no pipeline crítico de rede.
--- UPGRADE 3: Densidade de loop expandida e injetada com prioridade máxima.
+-- BASE: Bypasses nativos isolados do V20/V23.
+-- ENGINE: 60Hz Server Tick Synchronization (Imune a quedas de FPS).
+-- THREADING: Immediate Execution via Coroutine Swarm (Bypasses Task Scheduler).
+-- TARGETING: Predição Vetorial (Ping Compensation).
 -- ============================================================================
 
 local Players = game:GetService("Players")
@@ -26,19 +26,20 @@ local pcall = pcall
 local task_spawn = task.spawn
 local newcclosure = newcclosure or function(f) return f end
 
--- OTIMIZAÇÃO CRÍTICA: Cache da função nativa para evitar buscas no metamétodo
+-- OTIMIZAÇÃO CRÍTICA (Nativa do V23)
 local fireServerNative = Instance.new("RemoteEvent").FireServer
+local co_create = coroutine.create
+local co_resume = coroutine.resume
 
 -- === REGISTRADORES GLOBAIS ===
 local IsSpamActive = false
 local CURRENT_RAW_TARGET = nil
 local TARGET_BEST_PART = nil
 local HAS_VALID_TARGET = false
+local PRED_TARGET_POSITION = Vector3.new()
 
-local SCAN_RANGE = 120.0
+local SCAN_RANGE = 200.0
 local SCAN_RANGE_SQ = SCAN_RANGE * SCAN_RANGE
-local RANGE_LIMIT = 65.0
-local RANGE_LIMIT_SQ = RANGE_LIMIT * RANGE_LIMIT
 
 -- === SUBSISTEMA DE REMOTES ===
 local Remotes = ReplicatedStorage:WaitForChild("Remotes", 5)
@@ -49,9 +50,10 @@ local AbilitySelected = Remotes and Remotes:FindFirstChild("AbilityService")
     and Remotes.AbilityService:FindFirstChild("ToServer") 
     and Remotes.AbilityService.ToServer:FindFirstChild("AbilitySelected")
 
-local proxyMeta = {}
-proxyMeta.__index = function() return function() return false end end
-proxyMeta.__call = function() return false end
+local proxyMeta = {
+    __index = function() return function() return false end end,
+    __call = function() return false end
+}
 local StateValueProxy = setmetatable({}, proxyMeta)
 
 local restrictedStates = {
@@ -60,7 +62,7 @@ local restrictedStates = {
     Carried = true, BeingCarried = true
 }
 
--- === ENGENHARIA REVERSA DE MEMÓRIA (GC EXTRATOR V20 NATIVO) ===
+-- === ENGENHARIA DE MEMÓRIA AUTO-TERMINANTE ===
 local GameActiveAbilityInstance = nil
 local GameEquipFunction = nil
 
@@ -125,16 +127,8 @@ task_spawn(function()
                 if not HitscanFound and rawget(item, "Hitscan") and rawget(item, "AreaCheck") then
                     local oldHitscan = item.Hitscan
                     item.Hitscan = function(p6, p7)
-                        if HAS_VALID_TARGET and TARGET_BEST_PART and TARGET_BEST_PART.Parent and CURRENT_RAW_TARGET and CURRENT_RAW_TARGET.Parent and not p7 then
-                            local localHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                            if localHrp and localHrp.Parent then
-                                local p1 = TARGET_BEST_PART.Position
-                                local p2 = localHrp.Position
-                                local dx, dy, dz = p1.X - p2.X, p1.Y - p2.Y, p1.Z - p2.Z
-                                if (dx*dx + dy*dy + dz*dz) <= RANGE_LIMIT_SQ then
-                                    return CURRENT_RAW_TARGET, nil
-                                end
-                            end
+                        if IsSpamActive and HAS_VALID_TARGET and CURRENT_RAW_TARGET and CURRENT_RAW_TARGET.Parent and not p7 then
+                            return CURRENT_RAW_TARGET, nil
                         end
                         return oldHitscan(p6, p7)
                     end
@@ -175,7 +169,6 @@ task_spawn(function()
     while true do
         local targets = Entities:GetChildren()
         local tagged = CollectionService:GetTagged("CanBeCarried")
-        
         table.clear(CachedTargets)
         for i = 1, #targets do table.insert(CachedTargets, targets[i]) end
         for i = 1, #tagged do 
@@ -185,7 +178,8 @@ task_spawn(function()
     end
 end)
 
-RunService.PreSimulation:Connect(function()
+-- === MENTE 1: TARGETING PREDITIVO ===
+RunService.PreSimulation:Connect(function(dt)
     local character = LocalPlayer.Character
     local localHrp = character and character:FindFirstChild("HumanoidRootPart")
 
@@ -236,27 +230,40 @@ RunService.PreSimulation:Connect(function()
     end
 
     if bestPart and rawModel then
-        TARGET_BEST_PART = bestPart; CURRENT_RAW_TARGET = rawModel; HAS_VALID_TARGET = true
+        TARGET_BEST_PART = bestPart
+        CURRENT_RAW_TARGET = rawModel
+        HAS_VALID_TARGET = true
+        
+        -- Ping Compensation (Predição de 1 Frame)
+        PRED_TARGET_POSITION = bestPart.Position + (bestPart.AssemblyLinearVelocity * dt)
     else
         if not IsSpamActive then HAS_VALID_TARGET = false; CURRENT_RAW_TARGET = nil; TARGET_BEST_PART = nil end
     end
 end)
 
-local lastSendTime = os.clock()
-local ACCUMULATOR = 0
-local FORCED_RATE = 160        
-local TIME_STEP = 1 / FORCED_RATE
+-- === MENTE 2: MOTOR SINGULARITY (60Hz Coroutine Swarm) ===
+local SERVER_TICK_RATE = 1 / 60
+local TICK_ACCUMULATOR = 0
 
-local function executeOverclockEngine()
-    if not IsSpamActive then 
-        ACCUMULATOR = 0
-        return 
+-- Função isolada para o swarm
+local function burstFire(target)
+    if AbilityActivated then
+        fireServerNative(AbilityActivated, target)
+        fireServerNative(AbilityActivated, target)
+        fireServerNative(AbilityActivated, target)
     end
+    if AbilitySelected then
+        fireServerNative(AbilitySelected, target)
+        fireServerNative(AbilitySelected, target)
+        fireServerNative(AbilitySelected, target)
+    end
+end
 
-    local character = LocalPlayer.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if humanoid and humanoid.PlatformStand then 
-        humanoid.PlatformStand = false 
+-- O Stepped roda logo antes da física e da rede. Perfeito para preempção.
+RunService.Stepped:Connect(function(_, dt)
+    if not IsSpamActive then 
+        TICK_ACCUMULATOR = 0
+        return 
     end
 
     local target = CURRENT_RAW_TARGET
@@ -266,40 +273,22 @@ local function executeOverclockEngine()
         pcall(GameEquipFunction, GameActiveAbilityInstance)
     end
 
-    local currentTime = os.clock()
-    local deltaTime = currentTime - lastSendTime
-    lastSendTime = currentTime
-    if deltaTime > 0.1 then deltaTime = 0.016 end 
-    ACCUMULATOR = ACCUMULATOR + deltaTime
+    TICK_ACCUMULATOR = TICK_ACCUMULATOR + dt
+    if TICK_ACCUMULATOR > 0.05 then TICK_ACCUMULATOR = SERVER_TICK_RATE end
 
-    local loopCap = 0
-    while ACCUMULATOR >= TIME_STEP do
-        ACCUMULATOR = ACCUMULATOR - TIME_STEP
-        loopCap = loopCap + 1
-        if loopCap > 6 then break end
-
-        -- Chamadas diretas NATIVAS (Sem pcall, sem __index) = Máxima velocidade de thread
-        if AbilityActivated then
-            fireServerNative(AbilityActivated, target)
-            fireServerNative(AbilityActivated, target)
-            fireServerNative(AbilityActivated, target)
-            fireServerNative(AbilityActivated, target)
-            fireServerNative(AbilityActivated, target)
-        end
-        if AbilitySelected then
-            fireServerNative(AbilitySelected, target)
-            fireServerNative(AbilitySelected, target)
-            fireServerNative(AbilitySelected, target)
-            fireServerNative(AbilitySelected, target)
-            fireServerNative(AbilitySelected, target)
-        end
+    -- Acumulador rítmico perfeito para o servidor do Roblox
+    while TICK_ACCUMULATOR >= SERVER_TICK_RATE do
+        TICK_ACCUMULATOR = TICK_ACCUMULATOR - SERVER_TICK_RATE
+        
+        -- Execução instantânea (Bypass do Task Scheduler)
+        co_resume(co_create(burstFire), target)
+        co_resume(co_create(burstFire), target)
+        co_resume(co_create(burstFire), target)
+        co_resume(co_create(burstFire), target)
     end
-end
+end)
 
-RunService.PreSimulation:Connect(executeOverclockEngine)
--- Substituindo o PreRender normal por uma conexão de altíssima prioridade visual
-RunService:BindToRenderStep("ChronoOverclock", Enum.RenderPriority.Input.Value + 1, executeOverclockEngine)
-
+-- Hook visual para garantir o tiro no alvo previsto
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local method = getnamecallmethod()
@@ -307,7 +296,7 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
         if method == "ScreenPointToRay" or method == "ViewportPointToRay" then
             if Camera and self == Camera then
                 local origin = Camera.CFrame.Position
-                return Ray.new(origin, (TARGET_BEST_PART.Position - origin).Unit)
+                return Ray.new(origin, (PRED_TARGET_POSITION - origin).Unit)
             end
         end
     end
@@ -320,21 +309,18 @@ UserInputService.InputBegan:Connect(function(input, processed)
         IsSpamActive = not IsSpamActive
         
         if IsSpamActive then
-            ACCUMULATOR = TIME_STEP
+            TICK_ACCUMULATOR = SERVER_TICK_RATE
             local target = CURRENT_RAW_TARGET
             if target and target.Parent then
-                task_spawn(function()
-                    for _ = 1, 10 do
-                        if AbilityActivated then fireServerNative(AbilityActivated, target) end
-                        if AbilitySelected then fireServerNative(AbilitySelected, target) end
-                    end
-                end)
+                co_resume(co_create(function()
+                    for _ = 1, 5 do burstFire(target) end
+                end))
             end
         end
         
         game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "CHRONO V23 OVERCLOCK",
-            Text = IsSpamActive and "SISTEMA INTEGRADO ATIVO (METHOD CACHE)" or "MOTOR: DESLIGADO",
+            Title = "CHRONO V24 SINGULARITY",
+            Text = IsSpamActive and "COROUTINE SWARM + PREDITIVE TARGET ATIVO" or "MOTOR: DESLIGADO",
             Duration = 1
         })
     end
