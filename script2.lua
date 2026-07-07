@@ -1,10 +1,12 @@
 if not getgenv or not hookmetamethod or not getgc or not getupvalues then return end
 
 -- ============================================================================
---                       CHRONO V20 TITAN (THE APEX PREDATOR)
+--                       CHRONO V23 (TITAN OVERCLOCK)
 -- ============================================================================
--- FIXES: Arithmetic nil bug resolved.
--- BYPASS: Complete immunity during 'Carry' states.
+-- BASE: Estrutura v20titan.lua comprovada em combate.
+-- UPGRADE 1: Method Caching nativo (Zero __index overhead).
+-- UPGRADE 2: Remoção de pcall no pipeline crítico de rede.
+-- UPGRADE 3: Densidade de loop expandida e injetada com prioridade máxima.
 -- ============================================================================
 
 local Players = game:GetService("Players")
@@ -24,7 +26,10 @@ local pcall = pcall
 local task_spawn = task.spawn
 local newcclosure = newcclosure or function(f) return f end
 
--- === REGISTRADORES GLOBAIS DE ESTADO ===
+-- OTIMIZAÇÃO CRÍTICA: Cache da função nativa para evitar buscas no metamétodo
+local fireServerNative = Instance.new("RemoteEvent").FireServer
+
+-- === REGISTRADORES GLOBAIS ===
 local IsSpamActive = false
 local CURRENT_RAW_TARGET = nil
 local TARGET_BEST_PART = nil
@@ -44,28 +49,18 @@ local AbilitySelected = Remotes and Remotes:FindFirstChild("AbilityService")
     and Remotes.AbilityService:FindFirstChild("ToServer") 
     and Remotes.AbilityService.ToServer:FindFirstChild("AbilitySelected")
 
-local fireAbility = AbilityActivated and AbilityActivated.FireServer
-local fireSelected = AbilitySelected and AbilitySelected.FireServer
-
--- Proxy para mascarar leituras do Fusion no StateReplicator
 local proxyMeta = {}
-proxyMeta.__index = function(self, key)
-    if key == "get" or key == "Get" then
-        return function() return false end
-    end
-    return function() return false end
-end
+proxyMeta.__index = function() return function() return false end end
 proxyMeta.__call = function() return false end
 local StateValueProxy = setmetatable({}, proxyMeta)
 
--- Lista estendida de imunidade (Incluindo carry)
 local restrictedStates = {
     Stunned = true, Disabled = true, Ragdoll = true, 
     KnockedOut = true, Frozen = true, Carrying = true, 
     Carried = true, BeingCarried = true
 }
 
--- === ENGENHARIA REVERSA DE MEMÓRIA (GC EXTRATOR) ===
+-- === ENGENHARIA REVERSA DE MEMÓRIA (GC EXTRATOR V20 NATIVO) ===
 local GameActiveAbilityInstance = nil
 local GameEquipFunction = nil
 
@@ -78,7 +73,6 @@ task_spawn(function()
         for i = 1, #gc do
             local item = gc[i]
             if type(item) == "table" then
-                -- 1. Controle Absoluto do ClientDebounce (Habilidades e Carry)
                 if rawget(item, "getTimeLeft") and type(item.getTimeLeft) == "function" then
                     local oldGetTimeLeft = item.getTimeLeft
                     item.getTimeLeft = function(abilityName, ...)
@@ -97,7 +91,6 @@ task_spawn(function()
                     end
                 end
 
-                -- 2. Alinhamento Forçado
                 if rawget(item, "activeAbility") and type(item.activeAbility) == "table" then
                     GameActiveAbilityInstance = item.activeAbility
                     if item.activeAbility.equip and type(item.activeAbility.equip) == "function" then
@@ -105,7 +98,6 @@ task_spawn(function()
                     end
                 end
 
-                -- 3. Blindagem do StateReplicator
                 if rawget(item, "GetReplicatedState") and type(item.GetReplicatedState) == "function" then
                     local oldGetReplicatedState = item.GetReplicatedState
                     item.GetReplicatedState = function(self, player, stateName, ...)
@@ -116,7 +108,6 @@ task_spawn(function()
                     end
                 end
 
-                -- 4. Inativação do AbilityClient.setState
                 if rawget(item, "disableAbility") and rawget(item, "setState") then
                     local oldDisable = item.disableAbility
                     item.disableAbility = function(...) if IsSpamActive then return end return oldDisable(...) end
@@ -131,7 +122,6 @@ task_spawn(function()
                     HandlersPatched = true
                 end
 
-                -- 5. Interceptador Cirúrgico do Hitscan
                 if not HitscanFound and rawget(item, "Hitscan") and rawget(item, "AreaCheck") then
                     local oldHitscan = item.Hitscan
                     item.Hitscan = function(p6, p7)
@@ -158,7 +148,6 @@ task_spawn(function()
     end
 end)
 
--- === CORTE DE REDE ASSÍNCRONO (ANTI-SIGNALS) ===
 if Remotes and Remotes:FindFirstChild("AbilityService") and Remotes.AbilityService:FindFirstChild("ToClient") then
     local ToClientFolder = Remotes.AbilityService.ToClient
     for _, remote in pairs(ToClientFolder:GetChildren()) do
@@ -170,7 +159,6 @@ if Remotes and Remotes:FindFirstChild("AbilityService") and Remotes.AbilityServi
     end
 end
 
--- === CACHE DE FLUXO DE ENTIDADES ===
 local FriendCache = {}
 local function checkAndCachePlayer(player)
     if not player or player == LocalPlayer then return end
@@ -197,7 +185,6 @@ task_spawn(function()
     end
 end)
 
--- === MENTE 1: RASTREAMENTO COGNITIVO CORRIGIDO ===
 RunService.PreSimulation:Connect(function()
     local character = LocalPlayer.Character
     local localHrp = character and character:FindFirstChild("HumanoidRootPart")
@@ -235,7 +222,6 @@ RunService.PreSimulation:Connect(function()
                     if (dx*dx + dy*dy + dz*dz) <= SCAN_RANGE_SQ then
                         local screen, onScreen = Camera:WorldToScreenPoint(root.Position)
                         if onScreen and screen.Z > 0 then
-                            -- ERRO MATEMÁTICO CORRIGIDO (mpy no lugar correto)
                             local mx = screen.X - mpx
                             local my = screen.Y - mpy 
                             local mouseDistSq = mx*mx + my*my
@@ -256,14 +242,12 @@ RunService.PreSimulation:Connect(function()
     end
 end)
 
--- === MENTE 2: MOTOR TEMPORAL ANTI-CHOKE ===
 local lastSendTime = os.clock()
 local ACCUMULATOR = 0
-
 local FORCED_RATE = 160        
 local TIME_STEP = 1 / FORCED_RATE
 
-local function executeTitanEngine()
+local function executeOverclockEngine()
     if not IsSpamActive then 
         ACCUMULATOR = 0
         return 
@@ -285,7 +269,6 @@ local function executeTitanEngine()
     local currentTime = os.clock()
     local deltaTime = currentTime - lastSendTime
     lastSendTime = currentTime
-
     if deltaTime > 0.1 then deltaTime = 0.016 end 
     ACCUMULATOR = ACCUMULATOR + deltaTime
 
@@ -295,33 +278,28 @@ local function executeTitanEngine()
         loopCap = loopCap + 1
         if loopCap > 6 then break end
 
-        if fireAbility and AbilityActivated then
-            pcall(fireAbility, AbilityActivated, target)
-            pcall(fireAbility, AbilityActivated, target)
-            pcall(fireAbility, AbilityActivated, target)
-            pcall(fireAbility, AbilityActivated, target)
+        -- Chamadas diretas NATIVAS (Sem pcall, sem __index) = Máxima velocidade de thread
+        if AbilityActivated then
+            fireServerNative(AbilityActivated, target)
+            fireServerNative(AbilityActivated, target)
+            fireServerNative(AbilityActivated, target)
+            fireServerNative(AbilityActivated, target)
+            fireServerNative(AbilityActivated, target)
         end
-        if fireSelected and AbilitySelected then
-            pcall(fireSelected, AbilitySelected, target)
-            pcall(fireSelected, AbilitySelected, target)
-            pcall(fireSelected, AbilitySelected, target)
-            pcall(fireSelected, AbilitySelected, target)
+        if AbilitySelected then
+            fireServerNative(AbilitySelected, target)
+            fireServerNative(AbilitySelected, target)
+            fireServerNative(AbilitySelected, target)
+            fireServerNative(AbilitySelected, target)
+            fireServerNative(AbilitySelected, target)
         end
     end
 end
 
-RunService.PreSimulation:Connect(executeTitanEngine)
-RunService.PreRender:Connect(executeTitanEngine)
+RunService.PreSimulation:Connect(executeOverclockEngine)
+-- Substituindo o PreRender normal por uma conexão de altíssima prioridade visual
+RunService:BindToRenderStep("ChronoOverclock", Enum.RenderPriority.Input.Value + 1, executeOverclockEngine)
 
-RunService.PreRender:Connect(function()
-    if IsSpamActive and CURRENT_RAW_TARGET and CURRENT_RAW_TARGET.Parent then
-        if GameEquipFunction and GameActiveAbilityInstance then
-            pcall(GameEquipFunction, GameActiveAbilityInstance)
-        end
-    end
-end)
-
--- === HOOK METAMETÓDICO NATIVO ===
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local method = getnamecallmethod()
@@ -336,7 +314,6 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     return oldNamecall(self, ...)
 end))
 
--- === INTERFACE INTERATIVA ===
 UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
     if input.KeyCode == Enum.KeyCode.R then
@@ -348,17 +325,17 @@ UserInputService.InputBegan:Connect(function(input, processed)
             if target and target.Parent then
                 task_spawn(function()
                     for _ = 1, 10 do
-                        if fireAbility and AbilityActivated then pcall(fireAbility, AbilityActivated, target) end
-                        if fireSelected and AbilitySelected then pcall(fireSelected, AbilitySelected, target) end
+                        if AbilityActivated then fireServerNative(AbilityActivated, target) end
+                        if AbilitySelected then fireServerNative(AbilitySelected, target) end
                     end
                 end)
             end
         end
         
         game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "CHRONO V20 TITAN",
-            Text = IsSpamActive and "SISTEMA INTEGRADO ATIVO" or "MOTOR: DESLIGADO",
+            Title = "CHRONO V23 OVERCLOCK",
+            Text = IsSpamActive and "SISTEMA INTEGRADO ATIVO (METHOD CACHE)" or "MOTOR: DESLIGADO",
             Duration = 1
         })
     end
-end) 
+end)
