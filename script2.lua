@@ -1,12 +1,10 @@
 if not getgenv or not hookmetamethod or not getgc or not getupvalues then return end
 
 -- ============================================================================
---                       CHRONO V30 (GENESIS OVERCLOCK)
+--                       CHRONO V20 TITAN (THE APEX PREDATOR)
 -- ============================================================================
--- ALVO DE DESTRUIÇÃO: Neutraliza o V29 antecipando a janela do Task Scheduler.
--- ENGINE: Pre-Emptive PostSimulation Infiltration + Defer Squeezing.
--- DENSIDADE: Carga massiva ampliada para 5 disparos unrolled por ciclo.
--- COMPRESSÃO: Overclock adaptativo de frequência (~75Hz compressivos).
+-- FIXES: Arithmetic nil bug resolved.
+-- BYPASS: Complete immunity during 'Carry' states.
 -- ============================================================================
 
 local Players = game:GetService("Players")
@@ -24,29 +22,18 @@ local GetPlayers = Players.GetPlayers
 local rawget = rawget
 local pcall = pcall
 local task_spawn = task.spawn
-local task_defer = task.defer
 local newcclosure = newcclosure or function(f) return f end
 
--- === PROVEDORES NATIVOS DO MOTOR ===
-local fireServerNative = Instance.new("RemoteEvent").FireServer
-local co_create = coroutine.create
-local co_resume = coroutine.resume
-local co_status = coroutine.status
-
+-- === REGISTRADORES GLOBAIS DE ESTADO ===
 local IsSpamActive = false
 local CURRENT_RAW_TARGET = nil
 local TARGET_BEST_PART = nil
 local HAS_VALID_TARGET = false
 
--- [PRESERVADO V20 TITAN] Variáveis de Alcance Originais
 local SCAN_RANGE = 120.0
 local SCAN_RANGE_SQ = SCAN_RANGE * SCAN_RANGE
 local RANGE_LIMIT = 65.0
 local RANGE_LIMIT_SQ = RANGE_LIMIT * RANGE_LIMIT
-
--- === CONTROLADOR DE FLUXO OVERCLOCK (GENESIS METER) ===
-local ACCUMULATOR = 0
-local TARGET_TICK_RATE = 1 / 75 -- Overclock compressivo para ganho de prioridade de pacotes
 
 -- === SUBSISTEMA DE REMOTES ===
 local Remotes = ReplicatedStorage:WaitForChild("Remotes", 5)
@@ -57,30 +44,41 @@ local AbilitySelected = Remotes and Remotes:FindFirstChild("AbilityService")
     and Remotes.AbilityService:FindFirstChild("ToServer") 
     and Remotes.AbilityService.ToServer:FindFirstChild("AbilitySelected")
 
-local proxyMeta = {
-    __index = function() return function() return false end end,
-    __call = function() return false end
-}
+local fireAbility = AbilityActivated and AbilityActivated.FireServer
+local fireSelected = AbilitySelected and AbilitySelected.FireServer
+
+-- Proxy para mascarar leituras do Fusion no StateReplicator
+local proxyMeta = {}
+proxyMeta.__index = function(self, key)
+    if key == "get" or key == "Get" then
+        return function() return false end
+    end
+    return function() return false end
+end
+proxyMeta.__call = function() return false end
 local StateValueProxy = setmetatable({}, proxyMeta)
 
+-- Lista estendida de imunidade (Incluindo carry)
 local restrictedStates = {
     Stunned = true, Disabled = true, Ragdoll = true, 
     KnockedOut = true, Frozen = true, Carrying = true, 
     Carried = true, BeingCarried = true
 }
 
--- === INTERCEPTADOR DE ESTADOS GLOBAIS E HITSCAN (GC PRESERVADO V20 TITAN) ===
+-- === ENGENHARIA REVERSA DE MEMÓRIA (GC EXTRATOR) ===
 local GameActiveAbilityInstance = nil
 local GameEquipFunction = nil
 
 task_spawn(function()
     local HitscanFound = false
     local HandlersPatched = false
+    
     while not HandlersPatched do
         local gc = getgc(true)
         for i = 1, #gc do
             local item = gc[i]
             if type(item) == "table" then
+                -- 1. Controle Absoluto do ClientDebounce (Habilidades e Carry)
                 if rawget(item, "getTimeLeft") and type(item.getTimeLeft) == "function" then
                     local oldGetTimeLeft = item.getTimeLeft
                     item.getTimeLeft = function(abilityName, ...)
@@ -88,37 +86,52 @@ task_spawn(function()
                         return oldGetTimeLeft(abilityName, ...)
                     end
                 end
+                
                 if rawget(item, "set") and type(item.set) == "function" then
                     local oldSet = item.set
                     item.set = function(name, timeout, ...)
-                        if IsSpamActive and (name == "carry" or name == "OS_Ability" or name == "missingStat") then return true end
+                        if IsSpamActive and (name == "carry" or name == "OS_Ability" or name == "missingStat") then 
+                            return true 
+                        end
                         return oldSet(name, timeout, ...)
                     end
                 end
+
+                -- 2. Alinhamento Forçado
                 if rawget(item, "activeAbility") and type(item.activeAbility) == "table" then
                     GameActiveAbilityInstance = item.activeAbility
                     if item.activeAbility.equip and type(item.activeAbility.equip) == "function" then
                         GameEquipFunction = item.activeAbility.equip
                     end
                 end
+
+                -- 3. Blindagem do StateReplicator
                 if rawget(item, "GetReplicatedState") and type(item.GetReplicatedState) == "function" then
                     local oldGetReplicatedState = item.GetReplicatedState
                     item.GetReplicatedState = function(self, player, stateName, ...)
-                        if IsSpamActive and restrictedStates[stateName] then return StateValueProxy end
+                        if IsSpamActive and restrictedStates[stateName] then
+                            return StateValueProxy
+                        end
                         return oldGetReplicatedState(self, player, stateName, ...)
                     end
                 end
+
+                -- 4. Inativação do AbilityClient.setState
                 if rawget(item, "disableAbility") and rawget(item, "setState") then
                     local oldDisable = item.disableAbility
                     item.disableAbility = function(...) if IsSpamActive then return end return oldDisable(...) end
+                    
                     local oldSetState = item.setState
                     item.setState = function(stateName, stateValue, ...)
-                        if IsSpamActive and restrictedStates[stateName] then return oldSetState(stateName, false, ...) end
+                        if IsSpamActive and restrictedStates[stateName] then
+                            return oldSetState(stateName, false, ...)
+                        end
                         return oldSetState(stateName, stateValue, ...)
                     end
                     HandlersPatched = true
                 end
-                
+
+                -- 5. Interceptador Cirúrgico do Hitscan
                 if not HitscanFound and rawget(item, "Hitscan") and rawget(item, "AreaCheck") then
                     local oldHitscan = item.Hitscan
                     item.Hitscan = function(p6, p7)
@@ -145,14 +158,19 @@ task_spawn(function()
     end
 end)
 
+-- === CORTE DE REDE ASSÍNCRONO (ANTI-SIGNALS) ===
 if Remotes and Remotes:FindFirstChild("AbilityService") and Remotes.AbilityService:FindFirstChild("ToClient") then
-    for _, remote in pairs(Remotes.AbilityService.ToClient:GetChildren()) do
+    local ToClientFolder = Remotes.AbilityService.ToClient
+    for _, remote in pairs(ToClientFolder:GetChildren()) do
         if remote:IsA("RemoteEvent") then
-            remote.OnClientEvent:Connect(function(...) if IsSpamActive then return end end)
+            remote.OnClientEvent:Connect(function(...)
+                if IsSpamActive then return end
+            end)
         end
     end
 end
 
+-- === CACHE DE FLUXO DE ENTIDADES ===
 local FriendCache = {}
 local function checkAndCachePlayer(player)
     if not player or player == LocalPlayer then return end
@@ -169,43 +187,57 @@ task_spawn(function()
     while true do
         local targets = Entities:GetChildren()
         local tagged = CollectionService:GetTagged("CanBeCarried")
+        
         table.clear(CachedTargets)
         for i = 1, #targets do table.insert(CachedTargets, targets[i]) end
-        for i = 1, #tagged do if tagged[i] and tagged[i].Parent then table.insert(CachedTargets, tagged[i].Parent) end end
+        for i = 1, #tagged do 
+            if tagged[i] and tagged[i].Parent then table.insert(CachedTargets, tagged[i].Parent) end
+        end
         task.wait(0.25)
     end
 end)
 
--- === MENTE 1: COGNITIVE TRACKER (RASTREAMENTO TITAN ORIGINAL) ===
-local function updateTargetLogic()
+-- === MENTE 1: RASTREAMENTO COGNITIVO CORRIGIDO ===
+RunService.PreSimulation:Connect(function()
     local character = LocalPlayer.Character
     local localHrp = character and character:FindFirstChild("HumanoidRootPart")
-    if not localHrp or not Camera then HAS_VALID_TARGET = false; CURRENT_RAW_TARGET = nil; TARGET_BEST_PART = nil; return end
+
+    if not localHrp or not Camera then
+        HAS_VALID_TARGET = false; CURRENT_RAW_TARGET = nil; TARGET_BEST_PART = nil; return
+    end
 
     local mousePos = UserInputService:GetMouseLocation()
     local mpx, mpy = mousePos.X, mousePos.Y
     local lx, ly, lz = localHrp.Position.X, localHrp.Position.Y, localHrp.Position.Z
+    
     local closestDistSq = math.huge
-    local bestPart, rawModel = nil, nil
+    local bestPart = nil
+    local rawModel = nil
     
     for i = 1, #CachedTargets do
         local entity = CachedTargets[i]
         if entity and entity.ClassName == "Model" and entity ~= character then
-            if not FriendCache[entity.Name] then
+            local targetName = entity.Name
+            if not FriendCache[targetName] then
                 local root = entity:FindFirstChild("HumanoidRootPart") or entity.PrimaryPart
                 local realTargetModel = entity
                 local entityParent = entity.Parent
+                
                 if entityParent ~= workspace and entityParent ~= Entities and entityParent.ClassName == "Model" and entityParent:FindFirstChild("HumanoidRootPart") then
                     root = entityParent.HumanoidRootPart
                     realTargetModel = entityParent
                 end
+                
                 if root then
-                    local dx, dy, dz = lx - root.Position.X, ly - root.Position.Y, lz - root.Position.Z
+                    local dx = lx - root.Position.X
+                    local dy = ly - root.Position.Y
+                    local dz = lz - root.Position.Z
                     if (dx*dx + dy*dy + dz*dz) <= SCAN_RANGE_SQ then
                         local screen, onScreen = Camera:WorldToScreenPoint(root.Position)
                         if onScreen and screen.Z > 0 then
+                            -- ERRO MATEMÁTICO CORRIGIDO (mpy no lugar correto)
                             local mx = screen.X - mpx
-                            local my = screen.Y - mpy
+                            local my = screen.Y - mpy 
                             local mouseDistSq = mx*mx + my*my
                             if mouseDistSq < closestDistSq then
                                 closestDistSq = mouseDistSq; bestPart = root; rawModel = realTargetModel
@@ -222,101 +254,74 @@ local function updateTargetLogic()
     else
         if not IsSpamActive then HAS_VALID_TARGET = false; CURRENT_RAW_TARGET = nil; TARGET_BEST_PART = nil end
     end
-end
-RunService.PreSimulation:Connect(updateTargetLogic)
-
--- === MENTE 2: MATRIZ GENESIS (UNROLLED AMBIENTAL EXPANDIDO) ===
-local function executeGenesisBurst(target)
-    -- Maximização Crítica: 5 cargas pesadas unrolled injetadas simultaneamente
-    if AbilityActivated then
-        fireServerNative(AbilityActivated, target)
-        fireServerNative(AbilityActivated, target)
-        fireServerNative(AbilityActivated, target)
-        fireServerNative(AbilityActivated, target)
-        fireServerNative(AbilityActivated, target)
-    end
-    if AbilitySelected then
-        fireServerNative(AbilitySelected, target)
-        fireServerNative(AbilitySelected, target)
-        fireServerNative(AbilitySelected, target)
-        fireServerNative(AbilitySelected, target)
-        fireServerNative(AbilitySelected, target)
-    end
-end
-
-local WorkerPool = {}
-local CurrentWorkerIndex = 1
-
-local function initializeWorkerPool()
-    for i = 1, 4 do
-        WorkerPool[i] = co_create(function()
-            while true do
-                local activeTarget = coroutine.yield()
-                if activeTarget and activeTarget.Parent then
-                    executeGenesisBurst(activeTarget)
-                    executeGenesisBurst(activeTarget)
-                end
-            end
-        end)
-        co_resume(WorkerPool[i])
-    end
-end
-initializeWorkerPool()
-
-local function pumpGenesisEngine(target)
-    local currentWorker = WorkerPool[CurrentWorkerIndex]
-    if not currentWorker or co_status(currentWorker) == "dead" then
-        WorkerPool[CurrentWorkerIndex] = co_create(function()
-            while true do
-                local activeTarget = coroutine.yield()
-                if activeTarget and activeTarget.Parent then executeGenesisBurst(activeTarget) executeGenesisBurst(activeTarget) end
-            end
-        end)
-        currentWorker = WorkerPool[CurrentWorkerIndex]
-        co_resume(currentWorker)
-    end
-    
-    co_resume(currentWorker, target)
-    CurrentWorkerIndex = (CurrentWorkerIndex % 4) + 1
-end
-
--- === PIPELINE DE ANTECIPAÇÃO E RE-ALOCAÇÃO DE ESTADO ===
-
--- 1. Estabilização Cinética e Verificação Visual
-RunService.PreRender:Connect(function()
-    if not IsSpamActive then return end
-    local character = LocalPlayer.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if humanoid and humanoid.PlatformStand then humanoid.PlatformStand = false end
-    if GameEquipFunction and GameActiveAbilityInstance then pcall(GameEquipFunction, GameActiveAbilityInstance) end
 end)
 
--- 2. Motor de Infiltração PostSimulation (Intercepta e esvazia o buffer antes do Heartbeat do V29)
-RunService.PostSimulation:Connect(function(dt)
-    if not IsSpamActive then ACCUMULATOR = 0; return end
-    
+-- === MENTE 2: MOTOR TEMPORAL ANTI-CHOKE ===
+local lastSendTime = os.clock()
+local ACCUMULATOR = 0
+
+local FORCED_RATE = 160        
+local TIME_STEP = 1 / FORCED_RATE
+
+local function executeTitanEngine()
+    if not IsSpamActive then 
+        ACCUMULATOR = 0
+        return 
+    end
+
+    local character = LocalPlayer.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if humanoid and humanoid.PlatformStand then 
+        humanoid.PlatformStand = false 
+    end
+
     local target = CURRENT_RAW_TARGET
     if not target or not target.Parent then return end
 
-    ACCUMULATOR = ACCUMULATOR + dt
-    if ACCUMULATOR > 0.05 then ACCUMULATOR = TARGET_TICK_RATE end
+    if GameEquipFunction and GameActiveAbilityInstance then
+        pcall(GameEquipFunction, GameActiveAbilityInstance)
+    end
 
-    while ACCUMULATOR >= TARGET_TICK_RATE do
-        ACCUMULATOR = ACCUMULATOR - TARGET_TICK_RATE
-        
-        -- IMPACTO PRIMÁRIO: Enviado imediatamente após os cálculos de física do frame atual
-        pumpGenesisEngine(target)
-        
-        -- INFILTRAÇÃO AGENDADA: Força o Task Scheduler a processar a segunda onda ANTES de mudar de fase
-        task_defer(function()
-            if IsSpamActive and target and target.Parent then
-                pumpGenesisEngine(target)
-            end
-        end)
+    local currentTime = os.clock()
+    local deltaTime = currentTime - lastSendTime
+    lastSendTime = currentTime
+
+    if deltaTime > 0.1 then deltaTime = 0.016 end 
+    ACCUMULATOR = ACCUMULATOR + deltaTime
+
+    local loopCap = 0
+    while ACCUMULATOR >= TIME_STEP do
+        ACCUMULATOR = ACCUMULATOR - TIME_STEP
+        loopCap = loopCap + 1
+        if loopCap > 6 then break end
+
+        if fireAbility and AbilityActivated then
+            pcall(fireAbility, AbilityActivated, target)
+            pcall(fireAbility, AbilityActivated, target)
+            pcall(fireAbility, AbilityActivated, target)
+            pcall(fireAbility, AbilityActivated, target)
+        end
+        if fireSelected and AbilitySelected then
+            pcall(fireSelected, AbilitySelected, target)
+            pcall(fireSelected, AbilitySelected, target)
+            pcall(fireSelected, AbilitySelected, target)
+            pcall(fireSelected, AbilitySelected, target)
+        end
+    end
+end
+
+RunService.PreSimulation:Connect(executeTitanEngine)
+RunService.PreRender:Connect(executeTitanEngine)
+
+RunService.PreRender:Connect(function()
+    if IsSpamActive and CURRENT_RAW_TARGET and CURRENT_RAW_TARGET.Parent then
+        if GameEquipFunction and GameActiveAbilityInstance then
+            pcall(GameEquipFunction, GameActiveAbilityInstance)
+        end
     end
 end)
 
--- === HOOK DE REDIRECIONAMENTO DE INSTANT ALIGNMENT ===
+-- === HOOK METAMETÓDICO NATIVO ===
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local method = getnamecallmethod()
@@ -331,24 +336,29 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     return oldNamecall(self, ...)
 end))
 
--- === INPUT CONTROLLER ===
+-- === INTERFACE INTERATIVA ===
 UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
     if input.KeyCode == Enum.KeyCode.R then
         IsSpamActive = not IsSpamActive
+        
         if IsSpamActive then
-            ACCUMULATOR = TARGET_TICK_RATE
+            ACCUMULATOR = TIME_STEP
             local target = CURRENT_RAW_TARGET
             if target and target.Parent then
                 task_spawn(function()
-                    for _ = 1, 6 do executeGenesisBurst(target) end
+                    for _ = 1, 10 do
+                        if fireAbility and AbilityActivated then pcall(fireAbility, AbilityActivated, target) end
+                        if fireSelected and AbilitySelected then pcall(fireSelected, AbilitySelected, target) end
+                    end
                 end)
             end
         end
+        
         game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "CHRONO V30 GENESIS",
-            Text = IsSpamActive and "POST-SIMULATION OVERCLOCK ATIVO" or "MOTOR: DESLIGADO",
+            Title = "CHRONO V20 TITAN",
+            Text = IsSpamActive and "SISTEMA INTEGRADO ATIVO" or "MOTOR: DESLIGADO",
             Duration = 1
         })
     end
-end)
+end) 
