@@ -1,12 +1,12 @@
 if not getgenv or not hookmetamethod or not getgc or not getupvalues then return end
 
 -- ============================================================================
---                       CHRONO V26.1 (ENTROPY FLOW)
+--                       CHRONO V30 (GENESIS OVERCLOCK)
 -- ============================================================================
--- COMPATIBILIDADE: Hitscan Interceptor original do V20 Titan mantido intacto.
--- CORREÇÃO CRÍTICA: Controlador por DeltaTime adicionado para mitigar estouro de ping.
--- PIPELINE: Separação de tarefas (PreSimulation = Trava / Heartbeat = Burst Control).
--- MULTIPLEXING: Matriz estática de 4 threads estáveis via Round-Robin.
+-- ALVO DE DESTRUIÇÃO: Neutraliza o V29 antecipando a janela do Task Scheduler.
+-- ENGINE: Pre-Emptive PostSimulation Infiltration + Defer Squeezing.
+-- DENSIDADE: Carga massiva ampliada para 5 disparos unrolled por ciclo.
+-- COMPRESSÃO: Overclock adaptativo de frequência (~75Hz compressivos).
 -- ============================================================================
 
 local Players = game:GetService("Players")
@@ -24,6 +24,7 @@ local GetPlayers = Players.GetPlayers
 local rawget = rawget
 local pcall = pcall
 local task_spawn = task.spawn
+local task_defer = task.defer
 local newcclosure = newcclosure or function(f) return f end
 
 -- === PROVEDORES NATIVOS DO MOTOR ===
@@ -37,15 +38,15 @@ local CURRENT_RAW_TARGET = nil
 local TARGET_BEST_PART = nil
 local HAS_VALID_TARGET = false
 
--- [PRESERVADO V20 TITAN] Variáveis de Escopo e Alcance
+-- [PRESERVADO V20 TITAN] Variáveis de Alcance Originais
 local SCAN_RANGE = 120.0
 local SCAN_RANGE_SQ = SCAN_RANGE * SCAN_RANGE
 local RANGE_LIMIT = 65.0
 local RANGE_LIMIT_SQ = RANGE_LIMIT * RANGE_LIMIT
 
--- === CONTROLADOR DE FLUXO (DELTA TIME THROTTLE) ===
+-- === CONTROLADOR DE FLUXO OVERCLOCK (GENESIS METER) ===
 local ACCUMULATOR = 0
-local TARGET_TICK_RATE = 1 / 60 -- Sincronização limpa com a frequência de rede do servidor
+local TARGET_TICK_RATE = 1 / 75 -- Overclock compressivo para ganho de prioridade de pacotes
 
 -- === SUBSISTEMA DE REMOTES ===
 local Remotes = ReplicatedStorage:WaitForChild("Remotes", 5)
@@ -224,15 +225,19 @@ local function updateTargetLogic()
 end
 RunService.PreSimulation:Connect(updateTargetLogic)
 
--- === MENTE 2: MATRIZ MULTIPLEXADA V26 (COROUTINE WORKER POOL) ===
-local function executeMatrixBurst(target)
-    -- Otimizado para 3 requisições unrolled de alta velocidade (Previne estouro do buffer de ping)
+-- === MENTE 2: MATRIZ GENESIS (UNROLLED AMBIENTAL EXPANDIDO) ===
+local function executeGenesisBurst(target)
+    -- Maximização Crítica: 5 cargas pesadas unrolled injetadas simultaneamente
     if AbilityActivated then
+        fireServerNative(AbilityActivated, target)
+        fireServerNative(AbilityActivated, target)
         fireServerNative(AbilityActivated, target)
         fireServerNative(AbilityActivated, target)
         fireServerNative(AbilityActivated, target)
     end
     if AbilitySelected then
+        fireServerNative(AbilitySelected, target)
+        fireServerNative(AbilitySelected, target)
         fireServerNative(AbilitySelected, target)
         fireServerNative(AbilitySelected, target)
         fireServerNative(AbilitySelected, target)
@@ -248,8 +253,8 @@ local function initializeWorkerPool()
             while true do
                 local activeTarget = coroutine.yield()
                 if activeTarget and activeTarget.Parent then
-                    executeMatrixBurst(activeTarget)
-                    executeMatrixBurst(activeTarget)
+                    executeGenesisBurst(activeTarget)
+                    executeGenesisBurst(activeTarget)
                 end
             end
         end)
@@ -258,13 +263,13 @@ local function initializeWorkerPool()
 end
 initializeWorkerPool()
 
-local function pumpEntropyEngine(target)
+local function pumpGenesisEngine(target)
     local currentWorker = WorkerPool[CurrentWorkerIndex]
     if not currentWorker or co_status(currentWorker) == "dead" then
         WorkerPool[CurrentWorkerIndex] = co_create(function()
             while true do
                 local activeTarget = coroutine.yield()
-                if activeTarget and activeTarget.Parent then executeMatrixBurst(activeTarget) executeMatrixBurst(activeTarget) end
+                if activeTarget and activeTarget.Parent then executeGenesisBurst(activeTarget) executeGenesisBurst(activeTarget) end
             end
         end)
         currentWorker = WorkerPool[CurrentWorkerIndex]
@@ -275,9 +280,9 @@ local function pumpEntropyEngine(target)
     CurrentWorkerIndex = (CurrentWorkerIndex % 4) + 1
 end
 
--- === PIPELINE DE DISTRIBUIÇÃO CORRIGIDO POR DELTA TIME ===
+-- === PIPELINE DE ANTECIPAÇÃO E RE-ALOCAÇÃO DE ESTADO ===
 
--- 1. Fase Visual e Normalização
+-- 1. Estabilização Cinética e Verificação Visual
 RunService.PreRender:Connect(function()
     if not IsSpamActive then return end
     local character = LocalPlayer.Character
@@ -286,21 +291,28 @@ RunService.PreRender:Connect(function()
     if GameEquipFunction and GameActiveAbilityInstance then pcall(GameEquipFunction, GameActiveAbilityInstance) end
 end)
 
--- 2. Fase de Disparo Controlada por Tempo (Evita picos de ping)
-RunService.Heartbeat:Connect(function(dt)
+-- 2. Motor de Infiltração PostSimulation (Intercepta e esvazia o buffer antes do Heartbeat do V29)
+RunService.PostSimulation:Connect(function(dt)
     if not IsSpamActive then ACCUMULATOR = 0; return end
     
     local target = CURRENT_RAW_TARGET
     if not target or not target.Parent then return end
 
     ACCUMULATOR = ACCUMULATOR + dt
-    -- Proteção contra picos bruscos de lag local (Clamp do acumulador)
     if ACCUMULATOR > 0.05 then ACCUMULATOR = TARGET_TICK_RATE end
 
-    -- Despacha os pacotes de forma perfeitamente compassada com o tick do servidor
     while ACCUMULATOR >= TARGET_TICK_RATE do
         ACCUMULATOR = ACCUMULATOR - TARGET_TICK_RATE
-        pumpEntropyEngine(target)
+        
+        -- IMPACTO PRIMÁRIO: Enviado imediatamente após os cálculos de física do frame atual
+        pumpGenesisEngine(target)
+        
+        -- INFILTRAÇÃO AGENDADA: Força o Task Scheduler a processar a segunda onda ANTES de mudar de fase
+        task_defer(function()
+            if IsSpamActive and target and target.Parent then
+                pumpGenesisEngine(target)
+            end
+        end)
     end
 end)
 
@@ -329,13 +341,13 @@ UserInputService.InputBegan:Connect(function(input, processed)
             local target = CURRENT_RAW_TARGET
             if target and target.Parent then
                 task_spawn(function()
-                    for _ = 1, 5 do executeMatrixBurst(target) end
+                    for _ = 1, 6 do executeGenesisBurst(target) end
                 end)
             end
         end
         game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "CHRONO V26.1 FLOW",
-            Text = IsSpamActive and "MOTOR FLUXO ATIVO (PING ESTÁVEL)" or "MOTOR: DESLIGADO",
+            Title = "CHRONO V30 GENESIS",
+            Text = IsSpamActive and "POST-SIMULATION OVERCLOCK ATIVO" or "MOTOR: DESLIGADO",
             Duration = 1
         })
     end
